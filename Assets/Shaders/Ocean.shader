@@ -1,67 +1,68 @@
-﻿// Upgrade NOTE: replaced 'mul(UNITY_MATRIX_MVP,*)' with 'UnityObjectToClipPos(*)'
+﻿// Upgrade NOTE: replaced '_Object2World' with 'unity_ObjectToWorld'
+// Upgrade NOTE: replaced '_World2Object' with 'unity_WorldToObject'
 
 Shader "Custom/Ocean"
 {
 	Properties
 	{
-		[NoScaleOffset] _MainTex ("Texture", 2D) = "white" {}
+		_Color ("Color", Color) = (1,1,1,1)
+		_MainTex ("Albedo (RGB)", 2D) = "white" {}
+		_Glossiness ("Smoothness", Range(0,1)) = 0.5
+		_Metallic ("Metallic", Range(0,1)) = 0.0
 	}
 	SubShader
 	{
-		Pass
+		Tags { "RenderType"="Opaque" }
+		LOD 200
+
+		CGPROGRAM
+		// Physically based Standard lighting model, and enable shadows on all light types
+		#pragma surface surf Standard fullforwardshadows vertex:vert addshadow
+
+		// Use shader model 3.0 target, to get nicer looking lighting
+		#pragma target 3.0
+
+		sampler2D _MainTex;
+
+		struct Input
 		{
-			Tags {"LightMode"="ForwardBase"}
-			CGPROGRAM
-			#pragma vertex vert
-			#pragma fragment frag
-			#include "UnityCG.cginc"
-			#include "Lighting.cginc"
+			float2 uv_MainTex;
+		};
 
-			// compile shader into multiple variants, with and without shadows
-			// (we don't care about any lightmaps yet, so skip these variants)
-			#pragma multi_compile_fwdbase nolightmap nodirlightmap nodynlightmap novertexlight
-			// shadow helper functions and macros
-			#include "AutoLight.cginc"
+		half _Glossiness;
+		half _Metallic;
+		fixed4 _Color;
 
-			struct v2f
-			{
-				float2 uv : TEXCOORD0;
-				SHADOW_COORDS(1) // put shadows data into TEXCOORD1
-				fixed3 diff : COLOR0;
-				fixed3 ambient : COLOR1;
-				float4 pos : SV_POSITION;
-			};
-			v2f vert (appdata_base v)
-			{
-				v2f o;
-				o.pos = UnityObjectToClipPos(v.vertex);
-				o.uv = v.texcoord;
-				half3 worldNormal = UnityObjectToWorldNormal(v.normal);
-				half nl = max(0, dot(worldNormal, _WorldSpaceLightPos0.xyz));
-				o.diff = nl * _LightColor0.rgb;
-				o.ambient = ShadeSH9(half4(worldNormal,1));
-				// compute shadows data
-				TRANSFER_SHADOW(o)
-				return o;
-			}
+		// Add instancing support for this shader. You need to check 'Enable Instancing' on materials that use the shader.
+		// See https://docs.unity3d.com/Manual/GPUInstancing.html for more information about instancing.
+		// #pragma instancing_options assumeuniformscaling
+		UNITY_INSTANCING_BUFFER_START(Props)
+			// put more per-instance properties here
+		UNITY_INSTANCING_BUFFER_END(Props)
 
-			sampler2D _MainTex;
+		float4x4 _MatrixStraight;
+		float4x4 _MatrixInverse;
+		float _SquashMult;
 
-			fixed4 frag (v2f i) : SV_Target
-			{
-				fixed4 col = tex2D(_MainTex, i.uv);
-				// compute shadow attenuation (1.0 = fully lit, 0.0 = fully shadowed)
-				fixed shadow = SHADOW_ATTENUATION(i);
-				// darken light's illumination with shadow, keep ambient intact
-				fixed3 lighting = i.diff * shadow + i.ambient;
-				col.rgb *= lighting;
-				return col;
-			}
-			ENDCG
+		void vert (inout appdata_full v) {
+			//float3 GlobalPos = mul (unity_ObjectToWorld, float4 (v.vertex.xyz,1));
+			//float3 LocalPos = mul(_MatrixInverse,float4 (GlobalPos.xyz,1)).xyz * float3 (1/_SquashMult,1/_SquashMult,_SquashMult);
+			//v.vertex.xyz = mul(unity_WorldToObject, mul(_MatrixStraight,float4 (LocalPos,1))  ).xyz;
+
+			v.vertex.y+=sin(v.vertex.x+_Time.y);
 		}
 
-		// shadow casting support
-		UsePass "Legacy Shaders/VertexLit/SHADOWCASTER"
+		void surf (Input IN, inout SurfaceOutputStandard o)
+		{
+			// Albedo comes from a texture tinted by color
+			fixed4 c = tex2D (_MainTex, IN.uv_MainTex) * _Color;
+			o.Albedo = c.rgb;
+			// Metallic and smoothness come from slider variables
+			o.Metallic = _Metallic;
+			o.Smoothness = _Glossiness;
+			o.Alpha = c.a;
+		}
+		ENDCG
 	}
-	FallBack "Diffuse" //note: for passes: ForwardBase, ShadowCaster, ShadowCollector
+	FallBack "Diffuse"
 }
